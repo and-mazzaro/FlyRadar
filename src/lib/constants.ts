@@ -1,0 +1,30 @@
+export const AIRLINES = [
+  { code: 'FR', name: 'Ryanair' },
+  { code: 'EJU', name: 'EasyJet' },
+  { code: 'W4', name: 'Wizz Air' },
+  { code: 'VY', name: 'Vueling' },
+  { code: 'AZ', name: 'ITA Airways' },
+  { code: 'LH', name: 'Lufthansa' },
+  { code: 'IB', name: 'Iberia' },
+  { code: 'AF', name: 'Air France' },
+];
+
+export const AIRPORTS = [
+  { code: 'MXP', city: 'Milano Malpensa' },
+  { code: 'LIN', city: 'Milano Linate' },
+  { code: 'BGY', city: 'Bergamo Orio al Serio' },
+  { code: 'FCO', city: 'Roma Fiumicino' },
+  { code: 'CIA', city: 'Roma Ciampino' },
+  { code: 'BCN', city: 'Barcellona El Prat' },
+  { code: 'MAD', city: 'Madrid Barajas' },
+  { code: 'CDG', city: 'Parigi Charles de Gaulle' },
+  { code: 'ORY', city: 'Parigi Orly' },
+  { code: 'LHR', city: 'Londra Heathrow' },
+  { code: 'STN', city: 'Londra Stansted' },
+  { code: 'LGW', city: 'Londra Gatwick' },
+  { code: 'FRA', city: 'Francoforte' },
+  { code: 'MUC', city: 'Monaco di Baviera' },
+  { code: 'AMS', city: 'Amsterdam Schiphol' },
+  { code: 'ATH', city: 'Atene' },
+  { code: 'LIS', city: 'Lisbona' },
+];
