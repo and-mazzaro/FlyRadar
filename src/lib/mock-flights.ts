@@ -10,7 +10,7 @@ export interface FlightOffer {
   is_last_minute: boolean;
 }
 
-// Generates flight mock data simulating external flight searches (e.g. Kiwi Tequila, Duffel)
+// Generates flight mock data simulating external flight searches (e.g. Travelpayouts Aviasales)
 export function getMockFlightOffers(): FlightOffer[] {
   const airlines = ['Ryanair', 'EasyJet', 'Wizz Air', 'Vueling', 'ITA Airways', 'Lufthansa', 'Air France'];
   const origins = ['MXP', 'LIN', 'BGY', 'FCO', 'CIA'];

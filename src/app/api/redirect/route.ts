@@ -31,6 +31,10 @@ export async function GET(request: Request) {
       const allowedDomains = [
         'google.com',
         'www.google.com',
+        'aviasales.com',
+        'www.aviasales.com',
+        'aviasales.it',
+        'www.aviasales.it',
         'ryanair.com',
         'easyjet.com',
         'wizzair.com',

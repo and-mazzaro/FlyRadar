@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientSupabaseClient } from '@/lib/supabase';
 import FlightFeed from '@/components/flight-feed';
 import FocusAlertManager from '@/components/focus-alerts';
 import OnboardingModal from '@/components/onboarding-modal';
-import { Plane, LogOut, Trash2, Bell, Shield, Info } from 'lucide-react';
+import { Plane, LogOut, Trash2, Shield, Info } from 'lucide-react';
 import { Flight } from '@/components/flight-card';
 
 export default function FeedPage() {
@@ -18,19 +18,23 @@ export default function FeedPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const supabase = createClientSupabaseClient();
-
+  // FIX: creare il client Supabase dentro useEffect (o con useMemo)
+  // per evitare che ogni re-render crei una nuova istanza → loop infinito
   useEffect(() => {
+    // Creiamo il client DENTRO l'effect così non cambia ad ogni render
+    const supabase = createClientSupabaseClient();
+
     async function loadData() {
-      // 1. Get current auth user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (!user || userError) {
         router.push('/auth/login');
         return;
       }
+
       setUser(user);
 
-      // 2. Get user profile details
+      // Carica profilo utente
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -39,19 +43,18 @@ export default function FeedPage() {
 
       if (profileData) {
         setProfile(profileData);
-        // Show onboarding automatically if preferred airlines is empty
         if (!profileData.preferred_airlines || profileData.preferred_airlines.length === 0) {
           setShowOnboarding(true);
         }
       }
 
-      // 3. Get flight offers stored in database
-      const { data: flightsData } = await supabase
+      // Carica voli dal database
+      const { data: flightsData, error: flightsError } = await supabase
         .from('flights')
         .select('*')
         .order('found_at', { ascending: false });
 
-      if (flightsData) {
+      if (flightsData && !flightsError) {
         setFlights(flightsData);
       }
 
@@ -59,28 +62,22 @@ export default function FeedPage() {
     }
 
     loadData();
+    // FIX: dipendenza vuota [] → esegui SOLO al mount, non ad ogni render
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    const supabase = createClientSupabaseClient();
+    await supabase.auth.signOut();
+    router.push('/auth/login');
   }, [router]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.refresh();
-    router.push('/auth/login');
-  };
-
-  // Right to be forgotten account deletion handler (GDPR policy compliance)
-  const handleDeleteAccount = async () => {
-    if (!window.confirm('Sei assolutamente sicuro di voler eliminare definitivamente il tuo account? Questa azione rimuoverà tutti i tuoi radar salvati e le tue impostazioni.')) {
+  const handleDeleteAccount = useCallback(async () => {
+    if (!user) return;
+    if (!window.confirm('Sei assolutamente sicuro di voler eliminare definitivamente il tuo account? Questa azione è irreversibile.')) {
       return;
     }
     setDeleteLoading(true);
-    
     try {
-      // Call standard trigger or auth endpoint logic. Supabase RLS CASCADE does the database cleanup.
-      const { error } = await supabase.auth.updateUser({
-        data: { delete_requested: true } // We simulate metadata flagging or handle direct delete via api
-      });
-
-      // Standard project delete trigger or call an admin endpoint to bypass Supabase limitation of client side user self-delete
       const res = await fetch('/api/unsubscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,46 +85,50 @@ export default function FeedPage() {
       });
 
       if (res.ok) {
+        const supabase = createClientSupabaseClient();
         await supabase.auth.signOut();
-        router.refresh();
-        router.push('/auth/login?error=Account%20eliminato%20con%20successo');
+        router.push('/auth/login');
       } else {
-        alert('Errore durante l\'eliminazione del profilo. Riprova più tardi.');
+        const err = await res.json();
+        alert(`Errore: ${err.error || 'Impossibile eliminare l\'account.'}`);
       }
     } catch (e) {
       console.error(e);
     } finally {
       setDeleteLoading(false);
     }
-  };
+  }, [user, router]);
 
-  // Toggle GDPR Notification preference state
-  const handleToggleNotifications = async (enabled: boolean) => {
+  const handleToggleNotifications = useCallback(async (enabled: boolean) => {
+    if (!user) return;
+    const supabase = createClientSupabaseClient();
     const { error } = await supabase
       .from('profiles')
-      .update({ email_notifications_enabled: enabled })
+      .update({ email_notifications_enabled: enabled, updated_at: new Date().toISOString() })
       .eq('id', user.id);
 
     if (!error) {
-      setProfile({ ...profile, email_notifications_enabled: enabled });
+      setProfile((prev: any) => ({ ...prev, email_notifications_enabled: enabled }));
     }
-  };
+  }, [user]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center">
-        <span className="w-10 h-10 border-4 border-blue-600/30 border-t-blue-500 rounded-full animate-spin mb-4"></span>
-        <p className="text-slate-400 text-sm">Caricamento radar voli in corso...</p>
+      <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center gap-4">
+        <span className="w-12 h-12 border-4 border-blue-600/30 border-t-blue-500 rounded-full animate-spin"></span>
+        <p className="text-slate-400 text-sm">Caricamento radar voli...</p>
       </div>
     );
   }
 
+  if (!user) return null;
+
   return (
     <main className="min-h-screen bg-slate-950 text-white pb-16">
-      {/* Top navigation header */}
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-40">
+      {/* Header */}
+      <header className="border-b border-slate-800 bg-slate-900/70 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="p-2 bg-blue-600/20 text-blue-400 rounded-lg">
               <Plane className="w-5 h-5 rotate-45" />
             </div>
@@ -136,7 +137,8 @@ export default function FeedPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500 text-xs hidden sm:block">{user.email}</span>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all"
@@ -148,14 +150,17 @@ export default function FeedPage() {
         </div>
       </header>
 
-      {/* Main dashboard content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left / Flight feed listings */}
+          {/* Feed voli principale */}
           <div className="lg:col-span-2 space-y-6">
             <div>
               <h1 className="text-2xl font-black tracking-tight mb-1 text-white">Tariffe Radar Voli</h1>
-              <p className="text-slate-400 text-sm">Le ultime offerte last-minute estratte e pronte per la prenotazione diretta.</p>
+              <p className="text-slate-400 text-sm">
+                {flights.length > 0
+                  ? `${flights.length} offerte trovate · ordinate per prezzo`
+                  : 'Nessun volo trovato. Usa il pulsante "Sincronizza" per caricare le offerte.'}
+              </p>
             </div>
             <FlightFeed
               initialFlights={flights}
@@ -163,40 +168,46 @@ export default function FeedPage() {
             />
           </div>
 
-          {/* Right sidebar settings, notifications and alerts */}
+          {/* Sidebar destra */}
           <div className="space-y-6">
             <FocusAlertManager userId={user.id} />
 
-            {/* User preferences & Privacy (GDPR Compliance Area) */}
+            {/* Preferenze & GDPR */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-md space-y-4">
               <div className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-emerald-400" />
-                <h2 className="text-md font-bold text-white tracking-tight">Impostazioni & GDPR Compliance</h2>
+                <h2 className="text-md font-bold text-white tracking-tight">Impostazioni & Privacy</h2>
               </div>
 
-              {/* Notification toggle */}
               <div className="space-y-3">
+                {/* Toggle notifiche */}
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={profile?.email_notifications_enabled}
+                    checked={profile?.email_notifications_enabled ?? true}
                     onChange={(e) => handleToggleNotifications(e.target.checked)}
                     className="mt-1 w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-blue-500"
                   />
                   <div className="flex flex-col">
-                    <span className="text-slate-300 text-xs font-semibold">Notifiche Radar Attive</span>
+                    <span className="text-slate-300 text-xs font-semibold">Notifiche Email Attive</span>
                     <span className="text-slate-500 text-[11px] leading-normal">
-                      Autorizza l&apos;invio di avvisi email in caso di match con i tuoi Focus Alerts.
+                      Ricevi avvisi email quando un volo corrisponde ai tuoi Radar.
                     </span>
                   </div>
                 </label>
 
+                {/* Compagnie preferite */}
                 {profile?.preferred_airlines && profile.preferred_airlines.length > 0 && (
-                  <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-950 text-xs space-y-1.5">
-                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Compagnie Selezionate</div>
+                  <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800/60 text-xs space-y-1.5">
+                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      Compagnie Selezionate
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
                       {profile.preferred_airlines.map((airline: string) => (
-                        <span key={airline} className="px-2 py-0.5 bg-blue-600/10 text-blue-400 border border-blue-500/20 rounded-md font-medium text-[10px]">
+                        <span
+                          key={airline}
+                          className="px-2 py-0.5 bg-blue-600/10 text-blue-400 border border-blue-500/20 rounded-md font-medium text-[10px]"
+                        >
                           {airline}
                         </span>
                       ))}
@@ -205,18 +216,18 @@ export default function FeedPage() {
                       onClick={() => setShowOnboarding(true)}
                       className="text-[10px] text-blue-400 hover:text-blue-300 font-semibold underline block pt-1"
                     >
-                      Modifica compagnie aeree preferite
+                      Modifica compagnie preferite
                     </button>
                   </div>
                 )}
               </div>
 
-              {/* Right to be forgotten (Delete Account button) */}
+              {/* GDPR - Elimina account */}
               <div className="border-t border-slate-800/80 pt-4">
-                <div className="flex items-center gap-2 mb-3 bg-red-950/20 border border-red-500/10 p-3 rounded-xl">
-                  <Info className="w-4 h-4 text-red-400 shrink-0" />
+                <div className="flex items-start gap-2 mb-3 bg-red-950/20 border border-red-500/10 p-3 rounded-xl">
+                  <Info className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                   <p className="text-[10px] text-red-200/80 leading-normal">
-                    Conformemente al Regolamento GDPR (Diritto all&apos;Oblio), la cancellazione eliminerà istantaneamente il tuo profilo, i log associati ed i tuoi alert.
+                    Ai sensi del GDPR (Art. 17 – Diritto all&apos;Oblio), la cancellazione rimuove istantaneamente profilo, radar e log email associati.
                   </p>
                 </div>
                 <button
@@ -225,7 +236,7 @@ export default function FeedPage() {
                   className="w-full py-2 px-3 border border-red-500/30 hover:bg-red-500/10 text-red-400 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  {deleteLoading ? 'Eliminazione in corso...' : 'Elimina Profilo ed Account'}
+                  {deleteLoading ? 'Eliminazione...' : 'Elimina Account (GDPR)'}
                 </button>
               </div>
             </div>
@@ -233,12 +244,12 @@ export default function FeedPage() {
         </div>
       </div>
 
-      {/* Preferences onboarding modal */}
+      {/* Onboarding modale */}
       {showOnboarding && (
         <OnboardingModal
           userId={user.id}
           onComplete={(airlines) => {
-            setProfile({ ...profile, preferred_airlines: airlines });
+            setProfile((prev: any) => ({ ...prev, preferred_airlines: airlines }));
             setShowOnboarding(false);
           }}
         />

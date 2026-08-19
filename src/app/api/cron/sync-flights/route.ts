@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase';
-import { getMockFlightOffers } from '@/lib/mock-flights';
+import { getMockFlightOffers, FlightOffer } from '@/lib/mock-flights';
+import { fetchTravelpayoutsFlightOffers } from '@/lib/travelpayouts-flights';
 import { Resend } from 'resend';
+
 
 // Initialise Resend Client using dynamic environment key check
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -19,8 +21,22 @@ export async function GET(request: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // 2. Fetch mock flight offers (Kiwi/Duffel Provider emulation)
-    const rawOffers = getMockFlightOffers();
+    // 2. Fetch flight offers from Travelpayouts (Aviasales Data API) if token is set, otherwise mock
+    let rawOffers: FlightOffer[] = [];
+    const travelpayoutsToken = process.env.TRAVELPAYOUTS_API_TOKEN;
+
+    if (travelpayoutsToken) {
+      try {
+        rawOffers = await fetchTravelpayoutsFlightOffers(travelpayoutsToken);
+      } catch (err) {
+        console.error('Failed to fetch from Travelpayouts API, falling back to mock:', err);
+      }
+    }
+
+    if (rawOffers.length === 0) {
+      rawOffers = getMockFlightOffers();
+    }
+
     const supabase = createSupabaseAdminClient();
 
     // 3. Upsert flights into database
