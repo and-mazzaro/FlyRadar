@@ -13,6 +13,7 @@ drop table if exists public.profiles cascade;
 create table public.profiles (
   id uuid references auth.users on delete cascade primary key,
   email text not null,
+  country text default 'Italia',
   preferred_airlines text[] default '{}',
   email_notifications_enabled boolean default true,
   updated_at timestamp with time zone default now()
@@ -37,8 +38,8 @@ create table public.flights (
 create table public.user_alerts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete cascade not null,
-  origin varchar(3),
-  destination varchar(3),
+  origin text,
+  destination text,
   max_price numeric(10, 2),
   is_active boolean default true,
   created_at timestamp with time zone default now()
@@ -69,6 +70,10 @@ create policy "Utenti possono leggere il proprio profilo"
 create policy "Utenti possono aggiornare il proprio profilo"
   on public.profiles for update
   using (auth.uid() = id);
+
+create policy "Utenti possono creare il proprio profilo"
+  on public.profiles for insert
+  with check (auth.uid() = id);
 
 -- FLIGHTS: tutti gli utenti autenticati possono leggere i voli
 create policy "Utenti autenticati possono leggere i voli"
@@ -114,7 +119,13 @@ security definer set search_path = ''
 as $$
 begin
   insert into public.profiles (id, email, preferred_airlines, email_notifications_enabled)
-  values (new.id, new.email, '{}', true);
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'country', 'Italia'),
+    '{}',
+    coalesce((new.raw_user_meta_data->>'email_notifications_enabled')::boolean, true)
+  );
   return new;
 end;
 $$;

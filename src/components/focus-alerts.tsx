@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClientSupabaseClient } from '@/lib/supabase';
 import { Bell, Trash2, Plus, AlertCircle, RefreshCw } from 'lucide-react';
-import { AIRPORTS } from '@/lib/constants';
+import { getCityName } from '@/lib/constants';
 
 interface Alert {
   id: string;
@@ -39,6 +39,9 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
 
     if (!error && data) {
       setAlerts(data);
+      setErrorMsg('');
+    } else if (error) {
+      setErrorMsg('Non è stato possibile caricare i tuoi radar. Riprova tra poco.');
     }
     setFetching(false);
   };
@@ -57,16 +60,23 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
     setLoading(true);
     setErrorMsg('');
 
+    const profileResponse = await fetch('/api/profile/ensure', { method: 'POST' });
+    if (!profileResponse.ok) {
+      setErrorMsg('Il profilo non è ancora pronto. Esci e accedi di nuovo, poi riprova.');
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.from('user_alerts').insert({
       user_id: userId,
-      origin: origin.toUpperCase() || null,
-      destination: destination.toUpperCase() || null,
+      origin: origin.trim() || null,
+      destination: destination.trim() || null,
       max_price: maxPrice ? parseFloat(maxPrice) : null,
       is_active: true,
     });
 
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg('Non è stato possibile salvare questo radar. Controlla i dati e riprova.');
     } else {
       setOrigin('');
       setDestination('');
@@ -84,9 +94,9 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-md space-y-6">
+    <div className="bg-slate-800 border border-slate-700/60 rounded-2xl p-5 shadow-md space-y-6">
       <div className="flex items-center gap-2">
-        <Bell className="w-5 h-5 text-indigo-400" />
+        <Bell className="w-5 h-5 text-indigo-400 animate-bounce-slow" />
         <h2 className="text-lg font-bold text-white tracking-tight">Focus Alerts Radar</h2>
       </div>
 
@@ -98,13 +108,12 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
       )}
 
       {/* New alert form */}
-      <form onSubmit={handleCreateAlert} className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-950/40 p-4 rounded-xl border border-slate-950">
+      <form onSubmit={handleCreateAlert} className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-900 border border-slate-700/40 p-4 rounded-xl">
         <div>
-          <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Partenza</label>
+          <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Partenza</label>
           <input
             type="text"
-            maxLength={3}
-            placeholder="Qualsiasi (es. MXP)"
+            placeholder="Qualsiasi (es. Milano, MXP)"
             value={origin}
             onChange={(e) => setOrigin(e.target.value)}
             className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
@@ -112,11 +121,10 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
         </div>
 
         <div>
-          <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Arrivo</label>
+          <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Arrivo</label>
           <input
             type="text"
-            maxLength={3}
-            placeholder="Qualsiasi (es. BCN)"
+            placeholder="Qualsiasi (es. Londra, BCN)"
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
             className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
@@ -124,7 +132,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
         </div>
 
         <div>
-          <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">Prezzo Max (€)</label>
+          <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Prezzo Max (€)</label>
           <input
             type="number"
             placeholder="Sotto i... (es. 40)"
@@ -138,7 +146,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5"
+            className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-md"
           >
             <Plus className="w-4 h-4" />
             Crea Radar
@@ -159,22 +167,22 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
             {alerts.map((alert) => (
               <div
                 key={alert.id}
-                className="flex items-center justify-between p-3.5 bg-slate-800 border border-slate-700/60 rounded-xl"
+                className="flex items-center justify-between p-3.5 bg-slate-900 border border-slate-700/40 rounded-xl"
               >
                 <div className="flex flex-col gap-1 text-sm">
                   <div className="flex items-center gap-1.5 text-white font-bold">
-                    <span>{alert.origin ?? 'Qualsiasi'}</span>
+                    <span>{alert.origin ? `${alert.origin} (${getCityName(alert.origin)})` : 'Qualsiasi'}</span>
                     <span className="text-slate-500">→</span>
-                    <span>{alert.destination ?? 'Qualsiasi'}</span>
+                    <span>{alert.destination ? `${alert.destination} (${getCityName(alert.destination)})` : 'Qualsiasi'}</span>
                   </div>
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-slate-400 font-medium">
                     {alert.max_price ? `Prezzo max: ${alert.max_price}€` : 'Qualsiasi prezzo'}
                   </div>
                 </div>
 
                 <button
                   onClick={() => handleDeleteAlert(alert.id)}
-                  className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                  className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                   title="Rimuovi Radar"
                 >
                   <Trash2 className="w-4.5 h-4.5" />
@@ -183,11 +191,12 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
             ))}
           </div>
         ) : (
-          <div className="text-center py-6 bg-slate-950/20 border border-dashed border-slate-800 rounded-xl">
-            <p className="text-slate-500 text-xs">Nessun radar impostato. Ricevi email non appena troviamo l&apos;offerta perfetta.</p>
+          <div className="text-center py-6 bg-slate-900/40 border border-dashed border-slate-700 rounded-xl">
+            <p className="text-slate-400 text-xs px-4">Nessun radar impostato. Ricevi email non appena troviamo l&apos;offerta perfetta.</p>
           </div>
         )}
       </div>
     </div>
   );
 }
+

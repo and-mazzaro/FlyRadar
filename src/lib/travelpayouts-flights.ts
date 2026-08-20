@@ -1,8 +1,7 @@
 import { FlightOffer } from '@/lib/mock-flights';
 import { AIRLINES } from '@/lib/constants';
 
-const ITALIAN_ORIGINS = ['MXP', 'FCO', 'BGY', 'LIN', 'CIA'] as const;
-const AVIASALES_BASE_URL = 'https://www.aviasales.com';
+const ITALIAN_ORIGINS = ['MXP', 'LIN', 'BGY', 'FCO', 'CIA', 'NAP', 'VCE', 'FLR', 'BLQ', 'TRN', 'CTA', 'PMO', 'BRI', 'PSA', 'GOA'] as const;
 const SEARCH_WINDOW_DAYS = 14;
 const MAX_OFFERS = 50;
 
@@ -14,6 +13,7 @@ interface TravelpayoutsFlightItem {
   origin_airport?: string;
   destination_airport?: string;
   price: number;
+  currency?: string;
   airline: string;
   departure_at: string;
   return_at?: string;
@@ -34,11 +34,15 @@ function formatMonth(date: Date): string {
 
 function buildBookingUrl(link: string | undefined, origin: string, destination: string): string {
   if (link) {
-    const path = link.startsWith('/') ? link : `/${link}`;
-    return `${AVIASALES_BASE_URL}${path}`;
+    const url = new URL(link, 'https://www.aviasales.com');
+    // Only append currency params if not already present
+    if (!url.searchParams.has('currency')) url.searchParams.set('currency', 'EUR');
+    if (!url.searchParams.has('market')) url.searchParams.set('market', 'it');
+    return url.toString();
   }
 
-  return `https://www.google.com/travel/flights?q=Flights%20to%20${destination}%20from%20${origin}`;
+  // Fallback: Google Flights with EUR currency specified in URL
+  return `https://www.google.com/travel/flights?q=Flights+to+${destination}+from+${origin}&curr=EUR`;
 }
 
 function resolveAirlineName(code: string): string {
@@ -57,16 +61,18 @@ function mapToFlightOffer(item: TravelpayoutsFlightItem, isSpecialOffer = false)
   const origin = item.origin_airport || item.origin;
   const destination = item.destination_airport || item.destination;
 
+  const price = Number(item.price);
+
   return {
     origin,
     destination,
     airline: resolveAirlineName(item.airline),
-    price: item.price,
-    currency: 'EUR',
+    price,
+    currency: (item.currency || 'EUR').toUpperCase(),
     departure_date: new Date(item.departure_at).toISOString(),
     return_date: item.return_at ? new Date(item.return_at).toISOString() : undefined,
     booking_url: buildBookingUrl(item.link, origin, destination),
-    is_last_minute: isLastMinuteOffer(item.departure_at, item.price, isSpecialOffer),
+    is_last_minute: isLastMinuteOffer(item.departure_at, price, isSpecialOffer),
   };
 }
 
@@ -101,6 +107,11 @@ async function fetchTravelpayouts<T extends TravelpayoutsResponse>(
   return res.json() as Promise<T>;
 }
 
+function responseItems(data: TravelpayoutsResponse['data']): TravelpayoutsFlightItem[] {
+  if (Array.isArray(data)) return data;
+  return data ? Object.values(data) : [];
+}
+
 function appendCommonParams(url: URL, apiToken: string): void {
   url.searchParams.set('currency', 'eur');
   url.searchParams.set('market', 'it');
@@ -124,9 +135,10 @@ async function fetchCheapRoutesFromOrigin(
   appendCommonParams(url, apiToken);
 
   const json = await fetchTravelpayouts<TravelpayoutsResponse>(url, apiToken);
-  if (!json?.success || !Array.isArray(json.data)) return;
+  if (!json?.success) return;
 
-  for (const item of json.data) {
+  for (const item of responseItems(json.data)) {
+    if (!Number.isFinite(Number(item.price))) continue;
     if (!isWithinSearchWindow(item.departure_at, windowEnd)) continue;
 
     const key = offerKey(item);
@@ -150,9 +162,10 @@ async function fetchSpecialOffersFromOrigin(
   appendCommonParams(url, apiToken);
 
   const json = await fetchTravelpayouts<TravelpayoutsResponse>(url, apiToken);
-  if (!json?.success || !Array.isArray(json.data)) return;
+  if (!json?.success) return;
 
-  for (const item of json.data) {
+  for (const item of responseItems(json.data)) {
+    if (!Number.isFinite(Number(item.price))) continue;
     if (!isWithinSearchWindow(item.departure_at, windowEnd)) continue;
 
     const key = offerKey(item);

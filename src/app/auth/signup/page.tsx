@@ -1,15 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClientSupabaseClient } from '@/lib/supabase';
 import { Plane, AlertCircle } from 'lucide-react';
 
+const COUNTRIES = ['Italia', 'Spagna', 'Francia', 'Regno Unito', 'Germania', 'Paesi Bassi', 'Grecia', 'Portogallo', 'Svizzera', 'Austria', 'Belgio', 'Polonia', 'Turchia', 'Altro'];
+
 export default function SignupPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [country, setCountry] = useState('Italia');
   const [loading, setLoading] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptNotifications, setAcceptNotifications] = useState(true);
@@ -33,6 +34,7 @@ export default function SignupPage() {
       email,
       password,
       options: {
+          data: { country, email_notifications_enabled: acceptNotifications },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     });
@@ -50,10 +52,6 @@ export default function SignupPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-      {/* Background gradients */}
-      <div className="absolute top-0 -left-10 w-72 h-72 bg-blue-600 rounded-full blur-3xl opacity-10 animate-pulse"></div>
-      <div className="absolute bottom-0 -right-10 w-80 h-80 bg-indigo-600 rounded-full blur-3xl opacity-10"></div>
-
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-xl z-10 backdrop-blur-md">
         <div className="flex flex-col items-center mb-8">
           <div className="p-3 bg-blue-600/20 text-blue-400 rounded-xl mb-4">
@@ -89,6 +87,18 @@ export default function SignupPage() {
             )}
 
             <form onSubmit={handleSignup} className="space-y-5">
+              <div>
+                <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Stato di partenza principale</label>
+                <select
+                  required
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-800 border border-slate-700 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                >
+                  {COUNTRIES.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Indirizzo Email</label>
                 <input

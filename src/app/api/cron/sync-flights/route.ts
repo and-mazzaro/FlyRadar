@@ -2,14 +2,19 @@ import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase';
 import { getMockFlightOffers, FlightOffer } from '@/lib/mock-flights';
 import { fetchTravelpayoutsFlightOffers } from '@/lib/travelpayouts-flights';
+import { matchesAirportOrCity } from '@/lib/constants';
 import { Resend } from 'resend';
-
 
 // Initialise Resend Client using dynamic environment key check
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
 
+// Disable mock flight generation fallback to see if Travelpayouts API works
+const ENABLE_MOCK_FALLBACK = false;
+
+// Helper to check if a flight's airport matches the user's alert value (code or name)
 export async function GET(request: Request) {
   try {
     // 1. Verify Vercel Cron authorization header protection
@@ -21,7 +26,7 @@ export async function GET(request: Request) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // 2. Fetch flight offers from Travelpayouts (Aviasales Data API) if token is set, otherwise mock
+    // 2. Fetch flight offers from Travelpayouts (Aviasales Data API) if token is set
     let rawOffers: FlightOffer[] = [];
     const travelpayoutsToken = process.env.TRAVELPAYOUTS_API_TOKEN;
 
@@ -33,7 +38,9 @@ export async function GET(request: Request) {
       }
     }
 
-    if (rawOffers.length === 0) {
+    // Only fallback if mock generation is enabled
+    if (rawOffers.length === 0 && ENABLE_MOCK_FALLBACK) {
+      console.log('No offers from API, generating mock flight offers...');
       rawOffers = getMockFlightOffers();
     }
 
@@ -45,6 +52,10 @@ export async function GET(request: Request) {
       .from('flights')
       .delete()
       .lt('departure_date', new Date().toISOString());
+
+    if (rawOffers.length === 0) {
+      return NextResponse.json({ success: true, message: 'No flight offers fetched from API', flightsInserted: 0 });
+    }
 
     const { data: insertedFlights, error: insertError } = await supabase
       .from('flights')
@@ -85,9 +96,9 @@ export async function GET(request: Request) {
       if (!profile || !profile.email_notifications_enabled) continue;
 
       for (const flight of insertedFlights) {
-        // Validation check
-        const matchOrigin = !alert.origin || flight.origin === alert.origin;
-        const matchDestination = !alert.destination || flight.destination === alert.destination;
+        // Validation check using city-level mapping and name matching
+        const matchOrigin = matchesAirportOrCity(flight.origin, alert.origin ?? '');
+        const matchDestination = matchesAirportOrCity(flight.destination, alert.destination ?? '');
         const matchPrice = !alert.max_price || parseFloat(flight.price) <= parseFloat(alert.max_price);
 
         if (matchOrigin && matchDestination && matchPrice) {
@@ -193,3 +204,4 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+

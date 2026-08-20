@@ -104,10 +104,6 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <main className="min-h-screen bg-slate-950 flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
-      {/* Background gradients */}
-      <div className="absolute top-0 -left-10 w-72 h-72 bg-blue-600 rounded-full blur-3xl opacity-10 animate-pulse"></div>
-      <div className="absolute bottom-0 -right-10 w-80 h-80 bg-indigo-600 rounded-full blur-3xl opacity-10"></div>
-
       <Suspense fallback={
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-xl z-10 text-center text-slate-400">
           Caricamento...
