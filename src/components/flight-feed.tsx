@@ -23,7 +23,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
   
   // Auto-refresh states
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   
   // Default onlyUserCountry to true if a userCountry is configured
   const [onlyUserCountry, setOnlyUserCountry] = useState(!!userCountry);
@@ -141,7 +141,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
           )}
           <span className="text-xs text-slate-300">
             {autoRefresh 
-              ? `Feed in tempo reale attivo (ultimo aggiornamento: ${lastRefreshed.toLocaleTimeString()})`
+              ? `Feed in tempo reale attivo${lastRefreshed ? ` (ultimo aggiornamento: ${lastRefreshed.toLocaleTimeString('it-IT')})` : ''}`
               : 'Aggiornamento automatico disattivato'}
           </span>
         </div>

@@ -3,6 +3,8 @@ import { AIRLINES } from '@/lib/constants';
 
 const ITALIAN_ORIGINS = ['MXP', 'LIN', 'BGY', 'FCO', 'CIA', 'NAP', 'VCE', 'FLR', 'BLQ', 'TRN', 'CTA', 'PMO', 'BRI', 'PSA', 'GOA'] as const;
 const SEARCH_WINDOW_DAYS = 14;
+const LAST_MINUTE_WINDOW_DAYS = 3;
+const ROUTE_RESULT_LIMIT = 100;
 const MAX_OFFERS = 50;
 
 const AIRLINE_NAMES = Object.fromEntries(AIRLINES.map((a) => [a.code, a.name]));
@@ -124,14 +126,15 @@ async function fetchCheapRoutesFromOrigin(
   windowEnd: Date,
   seen: Set<string>,
   offers: FlightOffer[],
+  departureAt = formatMonth(new Date()),
 ): Promise<void> {
   const url = new URL('https://api.travelpayouts.com/aviasales/v3/prices_for_dates');
   url.searchParams.set('origin', origin);
   url.searchParams.set('unique', 'true');
   url.searchParams.set('sorting', 'price');
-  url.searchParams.set('limit', '30');
+  url.searchParams.set('limit', String(ROUTE_RESULT_LIMIT));
   url.searchParams.set('one_way', 'true');
-  url.searchParams.set('departure_at', formatMonth(new Date()));
+  url.searchParams.set('departure_at', departureAt);
   appendCommonParams(url, apiToken);
 
   const json = await fetchTravelpayouts<TravelpayoutsResponse>(url, apiToken);
@@ -185,9 +188,27 @@ export async function fetchTravelpayoutsFlightOffers(apiToken: string): Promise<
   await Promise.all(
     ITALIAN_ORIGINS.map(async (origin) => {
       await fetchCheapRoutesFromOrigin(origin, apiToken, windowEnd, seen, offers);
+
+      await Promise.all(
+        Array.from({ length: LAST_MINUTE_WINDOW_DAYS }, (_, dayOffset) => {
+          const departureDate = new Date();
+          departureDate.setDate(departureDate.getDate() + dayOffset);
+          return fetchCheapRoutesFromOrigin(
+            origin,
+            apiToken,
+            windowEnd,
+            seen,
+            offers,
+            departureDate.toISOString().slice(0, 10),
+          );
+        }),
+      );
+
       await fetchSpecialOffersFromOrigin(origin, apiToken, windowEnd, seen, offers);
     }),
   );
 
-  return offers.sort((a, b) => a.price - b.price).slice(0, MAX_OFFERS);
+  return offers
+    .sort((a, b) => Number(b.is_last_minute) - Number(a.is_last_minute) || a.price - b.price)
+    .slice(0, MAX_OFFERS);
 }
