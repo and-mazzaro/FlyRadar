@@ -81,10 +81,10 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
     };
   }, [autoRefresh, refreshFlightsList]);
 
-  // Refreshing the list is cheap; synchronizing the external API is deliberately slower.
+  // Hobby Vercel permits one scheduled run per day; users can still sync manually.
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(handleSync, 5 * 60 * 1000);
+    const interval = setInterval(handleSync, 24 * 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, [autoRefresh, handleSync]);
 
