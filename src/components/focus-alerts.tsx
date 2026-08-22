@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClientSupabaseClient } from '@/lib/supabase';
 import { Bell, Trash2, Plus, AlertCircle, RefreshCw } from 'lucide-react';
 import { getCityName } from '@/lib/constants';
@@ -27,9 +27,10 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
   const [fetching, setFetching] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const supabase = createClientSupabaseClient();
+  const supabaseRef = useRef(createClientSupabaseClient());
+  const supabase = supabaseRef.current;
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     setFetching(true);
     const { data, error } = await supabase
       .from('user_alerts')
@@ -44,11 +45,12 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
       setErrorMsg('Non è stato possibile caricare i tuoi radar. Riprova tra poco.');
     }
     setFetching(false);
-  };
+  }, [supabase, userId]);
 
   useEffect(() => {
-    fetchAlerts();
-  }, [userId]);
+    const initialFetch = window.setTimeout(fetchAlerts, 0);
+    return () => window.clearTimeout(initialFetch);
+  }, [fetchAlerts]);
 
   const handleCreateAlert = async (e: React.FormEvent) => {
     e.preventDefault();

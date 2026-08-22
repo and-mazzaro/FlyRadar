@@ -5,7 +5,9 @@ import { NextRequest, NextResponse } from 'next/server';
 // Server-side supabase client for Server Components / Route Handlers
 // We pass cookies explicitly or resolve inside the component so that middleware,
 // which is a Pages/Edge route environment in Next.js 16/Turbopack, does not break.
-export function createServerSupabaseClient(cookieStore: any) {
+export function createServerSupabaseClient(
+  cookieStore: Awaited<ReturnType<typeof import('next/headers').cookies>>,
+) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
   return createServerClient(
@@ -18,8 +20,8 @@ export function createServerSupabaseClient(cookieStore: any) {
         },
         setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+            cookiesToSet.forEach(({ name, value, options: cookieOptions }) =>
+              cookieStore.set(name, value, cookieOptions)
             );
           } catch {
             // The `setAll` method was called from a Server Component.
@@ -73,7 +75,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({
             request,
           });

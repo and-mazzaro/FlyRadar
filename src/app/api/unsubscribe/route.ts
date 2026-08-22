@@ -90,8 +90,8 @@ export async function GET(request: Request) {
     `, {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
     });
-  } catch (err: any) {
-    return new NextResponse(err.message, { status: 500 });
+  } catch (err: unknown) {
+    return new NextResponse(err instanceof Error ? err.message : 'Unexpected server error', { status: 500 });
   }
 }
 
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unexpected server error' }, { status: 500 });
   }
 }

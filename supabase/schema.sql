@@ -16,6 +16,7 @@ create table public.profiles (
   country text default 'Italia',
   preferred_airlines text[] default '{}',
   email_notifications_enabled boolean default true,
+  onboarding_completed boolean default false,
   updated_at timestamp with time zone default now()
 );
 
@@ -118,13 +119,14 @@ language plpgsql
 security definer set search_path = ''
 as $$
 begin
-  insert into public.profiles (id, email, preferred_airlines, email_notifications_enabled)
+  insert into public.profiles (id, email, country, preferred_airlines, email_notifications_enabled, onboarding_completed)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'country', 'Italia'),
     '{}',
-    coalesce((new.raw_user_meta_data->>'email_notifications_enabled')::boolean, true)
+    coalesce((new.raw_user_meta_data->>'email_notifications_enabled')::boolean, true),
+    false
   );
   return new;
 end;

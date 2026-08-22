@@ -2,12 +2,20 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import type { User } from '@supabase/supabase-js';
 import { createClientSupabaseClient } from '@/lib/supabase';
 import FlightFeed from '@/components/flight-feed';
 import FocusAlertManager from '@/components/focus-alerts';
 import OnboardingModal from '@/components/onboarding-modal';
-import { Plane, LogOut, Trash2, Shield, Info, User, Bell, Sliders, Globe, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plane, LogOut, Trash2, Info, User as UserIcon, Bell, Sliders, Globe, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { Flight } from '@/components/flight-card';
+
+interface Profile {
+  country: string | null;
+  preferred_airlines: string[] | null;
+  email_notifications_enabled: boolean;
+  onboarding_completed: boolean;
+}
 
 const COUNTRIES = [
   'Italia',
@@ -77,8 +85,8 @@ const IATA_GUIDE = [
 
 export default function FeedPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -109,7 +117,7 @@ export default function FeedPage() {
 
       if (profileData) {
         setProfile(profileData);
-        if (!profileData.preferred_airlines || profileData.preferred_airlines.length === 0 || !profileData.country) {
+        if (!profileData.onboarding_completed) {
           setShowOnboarding(true);
         }
       }
@@ -172,7 +180,7 @@ export default function FeedPage() {
       .eq('id', user.id);
 
     if (!error) {
-      setProfile((prev: any) => ({ ...prev, email_notifications_enabled: enabled }));
+      setProfile((prev) => prev ? { ...prev, email_notifications_enabled: enabled } : prev);
     }
   }, [user]);
 
@@ -185,7 +193,7 @@ export default function FeedPage() {
       .eq('id', user.id);
 
     if (!error) {
-      setProfile((prev: any) => ({ ...prev, country: newCountry }));
+      setProfile((prev) => prev ? { ...prev, country: newCountry } : prev);
     } else {
       alert(`Errore nell'aggiornare lo Stato: ${error.message}`);
     }
@@ -205,7 +213,7 @@ export default function FeedPage() {
   const navItems = [
     { key: 'feed', label: 'Feed', icon: <Plane className="w-5 h-5 rotate-45" /> },
     { key: 'search', label: 'Radar', icon: <Sliders className="w-5 h-5" /> },
-    { key: 'account', label: 'Account', icon: <User className="w-5 h-5" /> },
+    { key: 'account', label: 'Account', icon: <UserIcon className="w-5 h-5" /> },
   ] as const;
 
   return (
@@ -276,7 +284,7 @@ export default function FeedPage() {
             <FlightFeed
               initialFlights={flights}
               preferredAirlines={profile?.preferred_airlines || []}
-              userCountry={profile?.country}
+              userCountry={profile?.country ?? undefined}
             />
           </div>
         )}
@@ -506,7 +514,7 @@ export default function FeedPage() {
         <OnboardingModal
           userId={user.id}
           onComplete={(airlines, country) => {
-            setProfile((prev: any) => ({ ...prev, preferred_airlines: airlines, country }));
+            setProfile((prev) => prev ? { ...prev, preferred_airlines: airlines, country, onboarding_completed: true } : prev);
             setShowOnboarding(false);
           }}
         />
@@ -529,8 +537,8 @@ const LEGACY_COUNTRIES = [
 
 function LegacyFeedPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -562,7 +570,7 @@ function LegacyFeedPage() {
       if (profileData) {
         setProfile(profileData);
         // Show onboarding if preferred airlines or country is not set
-        if (!profileData.preferred_airlines || profileData.preferred_airlines.length === 0 || !profileData.country) {
+        if (!profileData.onboarding_completed) {
           setShowOnboarding(true);
         }
       }
@@ -626,7 +634,7 @@ function LegacyFeedPage() {
       .eq('id', user.id);
 
     if (!error) {
-      setProfile((prev: any) => ({ ...prev, email_notifications_enabled: enabled }));
+      setProfile((prev) => prev ? { ...prev, email_notifications_enabled: enabled } : prev);
     }
   }, [user]);
 
@@ -639,7 +647,7 @@ function LegacyFeedPage() {
       .eq('id', user.id);
 
     if (!error) {
-      setProfile((prev: any) => ({ ...prev, country: newCountry }));
+      setProfile((prev) => prev ? { ...prev, country: newCountry } : prev);
     } else {
       alert(`Errore nell'aggiornare lo Stato: ${error.message}`);
     }
@@ -719,7 +727,7 @@ function LegacyFeedPage() {
                   : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               Account & GDPR
             </button>
           </div>
@@ -741,7 +749,7 @@ function LegacyFeedPage() {
             <FlightFeed
               initialFlights={flights}
               preferredAirlines={profile?.preferred_airlines || []}
-              userCountry={profile?.country}
+              userCountry={profile?.country ?? undefined}
             />
           </div>
         )}
@@ -887,7 +895,7 @@ function LegacyFeedPage() {
         <OnboardingModal
           userId={user.id}
           onComplete={(airlines, country) => {
-            setProfile((prev: any) => ({ ...prev, preferred_airlines: airlines, country }));
+            setProfile((prev) => prev ? { ...prev, preferred_airlines: airlines, country, onboarding_completed: true } : prev);
             setShowOnboarding(false);
           }}
         />

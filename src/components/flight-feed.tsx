@@ -73,9 +73,12 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
   // Set up periodic automatic polling every 30 seconds
   useEffect(() => {
     if (!autoRefresh) return;
-    refreshFlightsList();
+    const initialRefresh = window.setTimeout(refreshFlightsList, 0);
     const interval = setInterval(refreshFlightsList, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      clearInterval(interval);
+    };
   }, [autoRefresh, refreshFlightsList]);
 
   // Refreshing the list is cheap; synchronizing the external API is deliberately slower.
@@ -84,11 +87,6 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
     const interval = setInterval(handleSync, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [autoRefresh, handleSync]);
-
-  // Handle incoming prop changes (e.g. from parent component initial state)
-  useEffect(() => {
-    setFlights(initialFlights);
-  }, [initialFlights]);
 
   // Deduplicate: keep cheapest flight per unique origin+destination+departure_date
   const deduped = Array.from(

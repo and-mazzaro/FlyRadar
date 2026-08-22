@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createSupabaseAdminClient } from '@/lib/supabase';
+import { createServerSupabaseClient } from '@/lib/supabase';
 import { getMockFlightOffers, FlightOffer } from '@/lib/mock-flights';
 import { fetchTravelpayoutsFlightOffers } from '@/lib/travelpayouts-flights';
 import { matchesAirportOrCity } from '@/lib/constants';
@@ -8,7 +10,7 @@ import { Resend } from 'resend';
 // Initialise Resend Client using dynamic environment key check
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Disable mock flight generation fallback to see if Travelpayouts API works
@@ -19,10 +21,14 @@ export async function GET(request: Request) {
   try {
     // 1. Verify Vercel Cron authorization header protection
     const authHeader = request.headers.get('authorization');
-    const isLocalFetch = authHeader === 'Bearer local-fetch';
-    const isVercelCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const isLocalFetch = process.env.NODE_ENV !== 'production' && authHeader === 'Bearer local-fetch';
+    const isVercelCron = Boolean(process.env.CRON_SECRET) && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const cookieStore = await cookies();
+    const authClient = createServerSupabaseClient(cookieStore);
+    const { data: { user } } = await authClient.auth.getUser();
+    const isAuthenticatedUser = Boolean(user);
 
-    if (!isLocalFetch && !isVercelCron && process.env.NODE_ENV === 'production') {
+    if (!isLocalFetch && !isVercelCron && !isAuthenticatedUser && process.env.NODE_ENV === 'production') {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
@@ -48,10 +54,14 @@ export async function GET(request: Request) {
 
     // 3. Upsert flights into database
     // Clean old flights to keep db lightweight (optional cleanup phase)
-    await supabase
+    const { error: cleanupError } = await supabase
       .from('flights')
       .delete()
       .lt('departure_date', new Date().toISOString());
+
+    if (cleanupError) {
+      throw new Error(`Failed to remove expired flights: ${cleanupError.message}`);
+    }
 
     if (rawOffers.length === 0) {
       return NextResponse.json({ success: true, message: 'No flight offers fetched from API', flightsInserted: 0 });
@@ -87,7 +97,7 @@ export async function GET(request: Request) {
       throw new Error(`Failed to fetch active alerts: ${alertsError.message}`);
     }
 
-    const matchesFound: Array<{ alertId: string; flightId: string; email: string; flightDetails: any }> = [];
+    const matchesFound: Array<{ alertId: string; flightId: string; email: string; flightDetails: FlightOffer }> = [];
 
     // Match analysis loop
     for (const alert of activeAlerts) {
@@ -200,8 +210,8 @@ export async function GET(request: Request) {
       alertsChecked: activeAlerts.length,
       notificationsSent: sentEmailsCount.count,
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Unexpected server error' }, { status: 500 });
   }
 }
 

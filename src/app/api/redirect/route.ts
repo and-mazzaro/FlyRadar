@@ -58,7 +58,7 @@ export async function GET(request: Request) {
 
     // 4. Temporary redirect response
     return NextResponse.redirect(targetUrl, 307);
-  } catch (err: any) {
-    return new NextResponse(err.message, { status: 500 });
+  } catch (err: unknown) {
+    return new NextResponse(err instanceof Error ? err.message : 'Unexpected server error', { status: 500 });
   }
 }

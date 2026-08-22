@@ -43,6 +43,7 @@ export default function OnboardingModal({ userId, onComplete }: OnboardingModalP
       .update({
         preferred_airlines: selectedAirlines,
         country: selectedCountry,
+        onboarding_completed: true,
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId);
