@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import FlightCard, { Flight } from './flight-card';
-import { Plane, Search, Filter, RotateCw, Globe, Calendar, Compass } from 'lucide-react';
-import { AIRLINES, matchesAirportOrCity, isDomesticFlight } from '@/lib/constants';
+import { Plane, Search, Filter, RotateCw, Globe, Calendar } from 'lucide-react';
+import { AIRLINES, matchesAirportOrCity } from '@/lib/constants';
 
 interface FlightFeedProps {
   initialFlights: Flight[];
@@ -13,13 +13,12 @@ interface FlightFeedProps {
 
 export default function FlightFeed({ initialFlights, preferredAirlines, userCountry = 'Italia' }: FlightFeedProps) {
   const [flights, setFlights] = useState<Flight[]>(initialFlights);
-  const [activeTab, setActiveTab] = useState<'domestic' | 'international' | 'all'>('domestic');
   const [dateHorizon, setDateHorizon] = useState<'all' | '7days' | '30days' | 'longterm'>('all');
   
   const [searchOrigin, setSearchOrigin] = useState('');
   const [searchDestination, setSearchDestination] = useState('');
   const [selectedAirline, setSelectedAirline] = useState('');
-  const [maxPrice, setMaxPrice] = useState<number>(200);
+  const [maxPrice, setMaxPrice] = useState<number>(1500);
   const [sortBy, setSortBy] = useState<'price' | 'date'>('price');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -101,18 +100,6 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
     return () => clearInterval(interval);
   }, [autoRefresh, handleSync]);
 
-  // Adjust default max price slider when switching tabs
-  const handleTabChange = (tab: 'domestic' | 'international' | 'all') => {
-    setActiveTab(tab);
-    if (tab === 'domestic') {
-      setMaxPrice(200);
-    } else if (tab === 'international') {
-      setMaxPrice(650);
-    } else {
-      setMaxPrice(800);
-    }
-  };
-
   // Deduplicate: keep cheapest flight per unique origin+destination+departure_date
   const deduped = Array.from(
     flights.reduce((map, f) => {
@@ -123,26 +110,17 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
     }, new Map<string, typeof flights[0]>()).values()
   );
 
-  // Separate domestic and international subsets for counts
-  const domesticFlights = deduped.filter(f => isDomesticFlight(f.origin, f.destination, userCountry));
-  const internationalFlights = deduped.filter(f => !isDomesticFlight(f.origin, f.destination, userCountry));
-
   // Client-side filtering and sorting
   const filteredFlights = deduped
     .filter((f) => {
-      // 1. Tab filter: Domestic vs International vs All
-      const isDomestic = isDomesticFlight(f.origin, f.destination, userCountry);
-      if (activeTab === 'domestic' && !isDomestic) return false;
-      if (activeTab === 'international' && isDomestic) return false;
-
-      // 2. Date horizon filter
+      // 1. Date horizon filter
       const departure = new Date(f.departure_date);
       const daysUntil = (departure.getTime() - currentTime) / (1000 * 60 * 60 * 24);
       if (dateHorizon === '7days' && daysUntil > 7) return false;
       if (dateHorizon === '30days' && daysUntil > 30) return false;
       if (dateHorizon === 'longterm' && daysUntil <= 30) return false;
 
-      // 3. Search inputs & airline & price
+      // 2. Search inputs & airline & price
       const matchOrigin = matchesAirportOrCity(f.origin, searchOrigin);
       const matchDest = matchesAirportOrCity(f.destination, searchDestination);
       const matchAirline = !selectedAirline || f.airline.toLowerCase() === selectedAirline.toLowerCase();
@@ -158,8 +136,6 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
       if (sortBy === 'price') return a.price - b.price;
       return new Date(a.departure_date).getTime() - new Date(b.departure_date).getTime();
     });
-
-  const sliderMax = activeTab === 'domestic' ? 400 : activeTab === 'international' ? 1500 : 1500;
 
   return (
     <div className="space-y-6">
@@ -194,58 +170,12 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
         </div>
       </div>
 
-      {/* Main Tab Switcher: Voli Nazionali vs Voli Internazionali */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-1.5 bg-slate-950/60 border border-slate-800 rounded-2xl">
-        <button
-          onClick={() => handleTabChange('domestic')}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-extrabold text-sm transition-all ${
-            activeTab === 'domestic'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Compass className="w-4 h-4 text-blue-300" />
-          <span>Voli Nazionali</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
-            activeTab === 'domestic' ? 'bg-blue-800/60 text-blue-100' : 'bg-slate-800 text-slate-400'
-          }`}>
-            {domesticFlights.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => handleTabChange('international')}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-extrabold text-sm transition-all ${
-            activeTab === 'international'
-              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Globe className="w-4 h-4 text-purple-300" />
-          <span>Voli Internazionali</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
-            activeTab === 'international' ? 'bg-purple-800/60 text-purple-100' : 'bg-slate-800 text-slate-400'
-          }`}>
-            {internationalFlights.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => handleTabChange('all')}
-          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-extrabold text-sm transition-all ${
-            activeTab === 'all'
-              ? 'bg-slate-700 text-white shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Plane className="w-4 h-4 text-slate-300 rotate-45" />
-          <span>Tutte le Offerte</span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
-            activeTab === 'all' ? 'bg-slate-900 text-slate-200' : 'bg-slate-800 text-slate-400'
-          }`}>
-            {deduped.length}
-          </span>
-        </button>
+      <div className="flex items-center justify-between gap-3 bg-slate-800 border border-slate-700/60 p-4 rounded-2xl">
+        <div className="flex items-center gap-2">
+          <Globe className="w-5 h-5 text-purple-300" />
+          <span className="text-sm font-extrabold text-white">Voli internazionali / International flights</span>
+        </div>
+        <span className="text-xs text-slate-400">{deduped.length} offerte</span>
       </div>
 
       {/* Pannello filtri avanzati */}
@@ -351,14 +281,14 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
         {/* Slider prezzo max dinamico */}
         <div className="pt-2">
           <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <span>Prezzo Massimo ({activeTab === 'international' ? 'Fascia Internazionale' : activeTab === 'domestic' ? 'Fascia Nazionale' : 'Tutte le fasce'})</span>
+            <span>Prezzo Massimo (Europa, Americhe, Asia e altre destinazioni)</span>
             <span className="text-emerald-400 text-sm font-black">{maxPrice}€</span>
           </div>
           <input
             type="range"
             min={10}
-            max={sliderMax}
-            step={activeTab === 'international' ? 10 : 5}
+            max={1500}
+            step={10}
             value={maxPrice}
             onChange={(e) => setMaxPrice(parseInt(e.target.value))}
             className="w-full accent-blue-500 h-1.5 cursor-pointer bg-slate-900 rounded-lg appearance-none"
@@ -385,7 +315,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
           <p className="text-slate-400 text-sm max-w-md mx-auto mb-4">
             {flights.length === 0
               ? 'Il database è vuoto o non sono stati caricati voli. Premi "Sincronizza Feed" per caricare le offerte.'
-              : `Nessuna offerta ${activeTab === 'domestic' ? 'nazionale' : activeTab === 'international' ? 'internazionale' : ''} corrisponde ai filtri attivi. Prova ad aumentare il prezzo massimo o a selezionare un orizzonte temporale più ampio.`}
+              : 'Nessuna offerta internazionale corrisponde ai filtri attivi. Prova ad aumentare il prezzo massimo o a selezionare un orizzonte temporale più ampio.'}
           </p>
           {flights.length === 0 && (
             <button

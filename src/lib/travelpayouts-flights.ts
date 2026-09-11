@@ -214,14 +214,13 @@ export async function fetchTravelpayoutsFlightOffers(apiToken: string): Promise<
     await fetchCheapRoutesFromOrigin(origin, apiToken, windowEnd, seen, offers, '');
   }
 
-  const domesticOffers: FlightOffer[] = [];
   const europeanOffers: FlightOffer[] = [];
   const extraEUOffers: FlightOffer[] = [];
 
   for (const offer of offers) {
-    if (isDomesticFlight(offer.origin, offer.destination)) {
-      domesticOffers.push(offer);
-    } else if (isExtraEUFlight(offer.origin, offer.destination)) {
+    if (isDomesticFlight(offer.origin, offer.destination)) continue;
+
+    if (isExtraEUFlight(offer.origin, offer.destination)) {
       extraEUOffers.push(offer);
     } else {
       europeanOffers.push(offer);
@@ -229,16 +228,14 @@ export async function fetchTravelpayoutsFlightOffers(apiToken: string): Promise<
   }
 
   // Sort each bucket by price
-  domesticOffers.sort((a, b) => a.price - b.price);
   europeanOffers.sort((a, b) => a.price - b.price);
   extraEUOffers.sort((a, b) => a.price - b.price);
 
-  // Reserve quotas so long-haul Extra-EU flights are guaranteed alongside domestic & EU
-  const selectedDomestic = domesticOffers.slice(0, 60);
-  const selectedEuropean = europeanOffers.slice(0, 80);
-  const selectedExtraEU = extraEUOffers.slice(0, 110);
+  // Prioritize international coverage while reserving space for long-haul destinations.
+  const selectedEuropean = europeanOffers.slice(0, 100);
+  const selectedExtraEU = extraEUOffers.slice(0, 150);
 
-  const combined = [...selectedDomestic, ...selectedEuropean, ...selectedExtraEU];
+  const combined = [...selectedEuropean, ...selectedExtraEU];
 
   return combined.sort((a, b) => Number(b.is_last_minute) - Number(a.is_last_minute) || a.price - b.price);
 }
