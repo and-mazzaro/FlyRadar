@@ -106,12 +106,18 @@ export async function GET(request: Request) {
       if (!profile || !profile.email_notifications_enabled) continue;
 
       for (const flight of insertedFlights) {
-        // Validation check using city-level mapping and name matching
+        // Validation check using city-level mapping, name matching, and optional date filter
         const matchOrigin = matchesAirportOrCity(flight.origin, alert.origin ?? '');
         const matchDestination = matchesAirportOrCity(flight.destination, alert.destination ?? '');
         const matchPrice = !alert.max_price || parseFloat(flight.price) <= parseFloat(alert.max_price);
 
-        if (matchOrigin && matchDestination && matchPrice) {
+        let matchDate = true;
+        if (alert.target_date) {
+          const flightDepartureDay = new Date(flight.departure_date).toISOString().slice(0, 10);
+          matchDate = flightDepartureDay === alert.target_date;
+        }
+
+        if (matchOrigin && matchDestination && matchPrice && matchDate) {
           matchesFound.push({
             alertId: alert.id,
             flightId: flight.id,

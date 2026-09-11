@@ -1,11 +1,15 @@
 import { FlightOffer } from '@/lib/mock-flights';
-import { AIRLINES } from '@/lib/constants';
-
-const ITALIAN_ORIGINS = ['MXP', 'LIN', 'BGY', 'FCO', 'CIA', 'NAP', 'VCE', 'FLR', 'BLQ', 'TRN', 'CTA', 'PMO', 'BRI', 'PSA', 'GOA'] as const;
-const SEARCH_WINDOW_DAYS = 14;
+import {
+  AIRLINES,
+  EXTRA_EU_DESTINATIONS,
+  ITALIAN_ORIGINS,
+  isDomesticFlight,
+  isExtraEUFlight,
+} from '@/lib/constants';
+const SEARCH_WINDOW_DAYS = 240;
 const LAST_MINUTE_WINDOW_DAYS = 3;
 const ROUTE_RESULT_LIMIT = 100;
-const MAX_OFFERS = 50;
+const MAX_OFFERS = 250;
 
 const AIRLINE_NAMES = Object.fromEntries(AIRLINES.map((a) => [a.code, a.name]));
 
@@ -134,7 +138,9 @@ async function fetchCheapRoutesFromOrigin(
   url.searchParams.set('sorting', 'price');
   url.searchParams.set('limit', String(ROUTE_RESULT_LIMIT));
   url.searchParams.set('one_way', 'true');
-  url.searchParams.set('departure_at', departureAt);
+  if (departureAt) {
+    url.searchParams.set('departure_at', departureAt);
+  }
   appendCommonParams(url, apiToken);
 
   const json = await fetchTravelpayouts<TravelpayoutsResponse>(url, apiToken);
@@ -179,15 +185,59 @@ async function fetchSpecialOffersFromOrigin(
   }
 }
 
+async function fetchSpecificRouteFromOrigin(
+  origin: string,
+  destination: string,
+  apiToken: string,
+  windowEnd: Date,
+  seen: Set<string>,
+  offers: FlightOffer[],
+): Promise<void> {
+  const url = new URL('https://api.travelpayouts.com/aviasales/v3/prices_for_dates');
+  url.searchParams.set('origin', origin);
+  url.searchParams.set('destination', destination);
+  url.searchParams.set('unique', 'false');
+  url.searchParams.set('sorting', 'price');
+  url.searchParams.set('limit', '10');
+  url.searchParams.set('one_way', 'true');
+  appendCommonParams(url, apiToken);
+
+  const json = await fetchTravelpayouts<TravelpayoutsResponse>(url, apiToken);
+  if (!json?.success) return;
+
+  for (const item of responseItems(json.data)) {
+    if (!Number.isFinite(Number(item.price))) continue;
+    if (!isWithinSearchWindow(item.departure_at, windowEnd)) continue;
+
+    const key = offerKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    offers.push(mapToFlightOffer(item));
+  }
+}
+
 export async function fetchTravelpayoutsFlightOffers(apiToken: string): Promise<FlightOffer[]> {
   const offers: FlightOffer[] = [];
   const seen = new Set<string>();
   const windowEnd = new Date();
   windowEnd.setDate(windowEnd.getDate() + SEARCH_WINDOW_DAYS);
 
-  await Promise.all(
-    ITALIAN_ORIGINS.map(async (origin) => {
-      await fetchCheapRoutesFromOrigin(origin, apiToken, windowEnd, seen, offers);
+  // Prepare current month, next month, and month after next for multi-week search
+  const now = new Date();
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const monthAfterNext = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+  const monthsToFetch = [formatMonth(now), formatMonth(nextMonth), formatMonth(monthAfterNext)];
+
+  await Promise.all([
+    ...ITALIAN_ORIGINS.map(async (origin) => {
+      // 1. Fetch overall cheapest routes without date restriction
+      await fetchCheapRoutesFromOrigin(origin, apiToken, windowEnd, seen, offers, '');
+
+      // 2. Fetch cheap routes for each of the upcoming months
+      for (const m of monthsToFetch) {
+        await fetchCheapRoutesFromOrigin(origin, apiToken, windowEnd, seen, offers, m);
+      }
 
       await Promise.all(
         Array.from({ length: LAST_MINUTE_WINDOW_DAYS }, (_, dayOffset) => {
@@ -206,9 +256,40 @@ export async function fetchTravelpayoutsFlightOffers(apiToken: string): Promise<
 
       await fetchSpecialOffersFromOrigin(origin, apiToken, windowEnd, seen, offers);
     }),
-  );
 
-  return offers
-    .sort((a, b) => Number(b.is_last_minute) - Number(a.is_last_minute) || a.price - b.price)
-    .slice(0, MAX_OFFERS);
+    // Fetch Extra-EU / Extra-Schengen destinations from every Italian origin
+    ...ITALIAN_ORIGINS.flatMap((origin) =>
+      EXTRA_EU_DESTINATIONS.map((destination) =>
+        fetchSpecificRouteFromOrigin(origin, destination, apiToken, windowEnd, seen, offers)
+      )
+    ),
+  ]);
+
+  const domesticOffers: FlightOffer[] = [];
+  const europeanOffers: FlightOffer[] = [];
+  const extraEUOffers: FlightOffer[] = [];
+
+  for (const offer of offers) {
+    if (isDomesticFlight(offer.origin, offer.destination)) {
+      domesticOffers.push(offer);
+    } else if (isExtraEUFlight(offer.origin, offer.destination)) {
+      extraEUOffers.push(offer);
+    } else {
+      europeanOffers.push(offer);
+    }
+  }
+
+  // Sort each bucket by price
+  domesticOffers.sort((a, b) => a.price - b.price);
+  europeanOffers.sort((a, b) => a.price - b.price);
+  extraEUOffers.sort((a, b) => a.price - b.price);
+
+  // Reserve quotas so long-haul Extra-EU flights are guaranteed alongside domestic & EU
+  const selectedDomestic = domesticOffers.slice(0, 60);
+  const selectedEuropean = europeanOffers.slice(0, 80);
+  const selectedExtraEU = extraEUOffers.slice(0, 110);
+
+  const combined = [...selectedDomestic, ...selectedEuropean, ...selectedExtraEU];
+
+  return combined.sort((a, b) => Number(b.is_last_minute) - Number(a.is_last_minute) || a.price - b.price);
 }

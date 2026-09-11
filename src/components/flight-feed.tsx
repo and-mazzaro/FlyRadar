@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import FlightCard, { Flight } from './flight-card';
-import { Plane, Search, Filter, RotateCw, Sparkles } from 'lucide-react';
-import { AIRLINES, matchesAirportOrCity, AIRPORT_COUNTRIES } from '@/lib/constants';
+import { Plane, Search, Filter, RotateCw, Globe, Calendar, Compass } from 'lucide-react';
+import { AIRLINES, matchesAirportOrCity, isDomesticFlight } from '@/lib/constants';
 
 interface FlightFeedProps {
   initialFlights: Flight[];
@@ -11,12 +11,15 @@ interface FlightFeedProps {
   userCountry?: string;
 }
 
-export default function FlightFeed({ initialFlights, preferredAirlines, userCountry }: FlightFeedProps) {
+export default function FlightFeed({ initialFlights, preferredAirlines, userCountry = 'Italia' }: FlightFeedProps) {
   const [flights, setFlights] = useState<Flight[]>(initialFlights);
+  const [activeTab, setActiveTab] = useState<'domestic' | 'international' | 'all'>('domestic');
+  const [dateHorizon, setDateHorizon] = useState<'all' | '7days' | '30days' | 'longterm'>('all');
+  
   const [searchOrigin, setSearchOrigin] = useState('');
   const [searchDestination, setSearchDestination] = useState('');
   const [selectedAirline, setSelectedAirline] = useState('');
-  const [maxPrice, setMaxPrice] = useState<number>(300);
+  const [maxPrice, setMaxPrice] = useState<number>(200);
   const [sortBy, setSortBy] = useState<'price' | 'date'>('price');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -24,9 +27,6 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
   // Auto-refresh states
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  
-  // Default onlyUserCountry to true if a userCountry is configured
-  const [onlyUserCountry, setOnlyUserCountry] = useState(!!userCountry);
 
   // Sync new flights from the cron sync-flights route
   const handleSync = useCallback(async () => {
@@ -81,12 +81,23 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
     };
   }, [autoRefresh, refreshFlightsList]);
 
-  // Hobby Vercel permits one scheduled run per day; users can still sync manually.
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(handleSync, 24 * 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, [autoRefresh, handleSync]);
+
+  // Adjust default max price slider when switching tabs
+  const handleTabChange = (tab: 'domestic' | 'international' | 'all') => {
+    setActiveTab(tab);
+    if (tab === 'domestic') {
+      setMaxPrice(200);
+    } else if (tab === 'international') {
+      setMaxPrice(650);
+    } else {
+      setMaxPrice(800);
+    }
+  };
 
   // Deduplicate: keep cheapest flight per unique origin+destination+departure_date
   const deduped = Array.from(
@@ -98,21 +109,32 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
     }, new Map<string, typeof flights[0]>()).values()
   );
 
+  // Separate domestic and international subsets for counts
+  const domesticFlights = deduped.filter(f => isDomesticFlight(f.origin, f.destination, userCountry));
+  const internationalFlights = deduped.filter(f => !isDomesticFlight(f.origin, f.destination, userCountry));
+
   // Client-side filtering and sorting
   const filteredFlights = deduped
     .filter((f) => {
+      // 1. Tab filter: Domestic vs International vs All
+      const isDomestic = isDomesticFlight(f.origin, f.destination, userCountry);
+      if (activeTab === 'domestic' && !isDomestic) return false;
+      if (activeTab === 'international' && isDomestic) return false;
+
+      // 2. Date horizon filter
+      const departure = new Date(f.departure_date);
+      const daysUntil = (departure.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      if (dateHorizon === '7days' && daysUntil > 7) return false;
+      if (dateHorizon === '30days' && daysUntil > 30) return false;
+      if (dateHorizon === 'longterm' && daysUntil <= 30) return false;
+
+      // 3. Search inputs & airline & price
       const matchOrigin = matchesAirportOrCity(f.origin, searchOrigin);
       const matchDest = matchesAirportOrCity(f.destination, searchDestination);
-
       const matchAirline = !selectedAirline || f.airline.toLowerCase() === selectedAirline.toLowerCase();
       const matchPrice = f.price <= maxPrice;
 
-      // Filter by origin country if toggle active and user has a country set
-      const airportCountry = AIRPORT_COUNTRIES[f.origin.toUpperCase()];
-      const matchCountry = !onlyUserCountry || !userCountry || 
-        (airportCountry && airportCountry.toLowerCase() === userCountry.toLowerCase());
-
-      return matchOrigin && matchDest && matchAirline && matchPrice && matchCountry;
+      return matchOrigin && matchDest && matchAirline && matchPrice;
     })
     .sort((a, b) => {
       const aPreferred = preferredAirlines.includes(a.airline);
@@ -123,11 +145,12 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
       return new Date(a.departure_date).getTime() - new Date(b.departure_date).getTime();
     });
 
+  const sliderMax = activeTab === 'domestic' ? 400 : activeTab === 'international' ? 1500 : 1500;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Auto-refresh indicator header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-800 border border-slate-700/60 p-4 rounded-xl">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-800 border border-slate-700/60 p-4 rounded-2xl">
         <div className="flex items-center gap-2">
           {autoRefresh ? (
             <span className="flex h-2.5 w-2.5 relative">
@@ -137,7 +160,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
           ) : (
             <span className="h-2.5 w-2.5 rounded-full bg-slate-500"></span>
           )}
-          <span className="text-xs text-slate-300">
+          <span className="text-xs text-slate-300 font-medium">
             {autoRefresh 
               ? `Feed in tempo reale attivo${lastRefreshed ? ` (ultimo aggiornamento: ${lastRefreshed.toLocaleTimeString('it-IT')})` : ''}`
               : 'Aggiornamento automatico disattivato'}
@@ -157,47 +180,66 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
         </div>
       </div>
 
-      {/* Country Filter Alert banner */}
-      {userCountry && (
-        <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
-          onlyUserCountry 
-            ? 'bg-blue-950/20 border-blue-800/40 text-blue-200' 
-            : 'bg-slate-800/50 border-slate-700/50 text-slate-400'
-        }`}>
-          <div className="flex items-start gap-2.5">
-            <Sparkles className={`w-4 h-4 mt-0.5 shrink-0 ${onlyUserCountry ? 'text-blue-400' : 'text-slate-500'}`} />
-            <div>
-              <p className="text-xs font-semibold">
-                {onlyUserCountry 
-                  ? `Mostrando voli in partenza dallo stato registrato (${userCountry})` 
-                  : `Tutti i voli globali nel feed (Stato registrato: ${userCountry})`}
-              </p>
-              <p className="text-[11px] opacity-80 mt-0.5">
-                {onlyUserCountry 
-                  ? 'Il feed prioritizza le tratte che partono dai tuoi aeroporti locali.' 
-                  : 'Filtra per mostrare solo le partenze dal tuo stato locale.'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setOnlyUserCountry(!onlyUserCountry)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-              onlyUserCountry 
-                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm' 
-                : 'border border-slate-600 hover:border-slate-500 text-slate-300 hover:text-white'
-            }`}
-          >
-            {onlyUserCountry ? 'Mostra tutti i voli' : 'Filtra per il mio Stato'}
-          </button>
-        </div>
-      )}
+      {/* Main Tab Switcher: Voli Nazionali vs Voli Internazionali */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-1.5 bg-slate-950/60 border border-slate-800 rounded-2xl">
+        <button
+          onClick={() => handleTabChange('domestic')}
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-extrabold text-sm transition-all ${
+            activeTab === 'domestic'
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Compass className="w-4 h-4 text-blue-300" />
+          <span>Voli Nazionali</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+            activeTab === 'domestic' ? 'bg-blue-800/60 text-blue-100' : 'bg-slate-800 text-slate-400'
+          }`}>
+            {domesticFlights.length}
+          </span>
+        </button>
 
-      {/* Pannello filtri */}
+        <button
+          onClick={() => handleTabChange('international')}
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-extrabold text-sm transition-all ${
+            activeTab === 'international'
+              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Globe className="w-4 h-4 text-purple-300" />
+          <span>Voli Internazionali</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+            activeTab === 'international' ? 'bg-purple-800/60 text-purple-100' : 'bg-slate-800 text-slate-400'
+          }`}>
+            {internationalFlights.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('all')}
+          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-extrabold text-sm transition-all ${
+            activeTab === 'all'
+              ? 'bg-slate-700 text-white shadow-md'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Plane className="w-4 h-4 text-slate-300 rotate-45" />
+          <span>Tutte le Offerte</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-black ${
+            activeTab === 'all' ? 'bg-slate-900 text-slate-200' : 'bg-slate-800 text-slate-400'
+          }`}>
+            {deduped.length}
+          </span>
+        </button>
+      </div>
+
+      {/* Pannello filtri avanzati */}
       <div className="bg-slate-800 border border-slate-700/60 p-5 rounded-2xl shadow-md space-y-4">
         <div className="flex items-center justify-between border-b border-slate-700/40 pb-3">
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-blue-400" />
-            <h2 className="text-sm font-bold text-white">Filtra Voli</h2>
+            <h2 className="text-sm font-bold text-white">Filtra Risultati</h2>
           </div>
           <div className="flex items-center gap-3">
             {syncMessage && (
@@ -214,6 +256,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
           </div>
         </div>
 
+        {/* Input Ricerca & Filtri Principali */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Origine */}
           <div className="relative">
@@ -232,7 +275,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
             <Search className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
             <input
               type="text"
-              placeholder="Arrivo (es. Londra o BCN)"
+              placeholder="Arrivo (es. Londra, JFK, BCN)"
               value={searchDestination}
               onChange={(e) => setSearchDestination(e.target.value)}
               className="w-full pl-8 pr-3 py-2.5 bg-slate-900 border border-slate-700 text-white text-sm rounded-xl placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -262,17 +305,46 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
           </select>
         </div>
 
-        {/* Slider prezzo max */}
+        {/* Filtri Temporali Orizzonte (Lungo Termine) */}
+        <div className="pt-2 border-t border-slate-700/30 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-bold text-slate-300">Data Partenza:</span>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { key: 'all', label: 'Tutte le Date' },
+              { key: '7days', label: 'Entro 7 Giorni' },
+              { key: '30days', label: 'Entro 30 Giorni' },
+              { key: 'longterm', label: '30+ Giorni (Lungo Termine)' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setDateHorizon(key as typeof dateHorizon)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  dateHorizon === key
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-700/60'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Slider prezzo max dinamico */}
         <div className="pt-2">
           <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-            <span>Prezzo Massimo</span>
+            <span>Prezzo Massimo ({activeTab === 'international' ? 'Fascia Internazionale' : activeTab === 'domestic' ? 'Fascia Nazionale' : 'Tutte le fasce'})</span>
             <span className="text-emerald-400 text-sm font-black">{maxPrice}€</span>
           </div>
           <input
             type="range"
             min={10}
-            max={500}
-            step={5}
+            max={sliderMax}
+            step={activeTab === 'international' ? 10 : 5}
             value={maxPrice}
             onChange={(e) => setMaxPrice(parseInt(e.target.value))}
             className="w-full accent-blue-500 h-1.5 cursor-pointer bg-slate-900 rounded-lg appearance-none"
@@ -280,7 +352,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
         </div>
       </div>
 
-      {/* Cards voli */}
+      {/* Grid Carte Voli */}
       {filteredFlights.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredFlights.map((flight) => (
@@ -288,17 +360,18 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
               key={flight.id}
               flight={flight}
               isPreferred={preferredAirlines.includes(flight.airline)}
+              userCountry={userCountry}
             />
           ))}
         </div>
       ) : (
         <div className="bg-slate-800 border border-slate-700/60 p-12 text-center rounded-2xl">
           <Plane className="w-12 h-12 text-slate-600 mx-auto mb-4 rotate-45" />
-          <h3 className="text-lg font-bold text-white mb-1">Nessun Volo Trovato</h3>
-          <p className="text-slate-400 text-sm max-w-sm mx-auto mb-4">
+          <h3 className="text-lg font-bold text-white mb-1">Nessun Volo Trovato in Questa Sezione</h3>
+          <p className="text-slate-400 text-sm max-w-md mx-auto mb-4">
             {flights.length === 0
               ? 'Il database è vuoto o non sono stati caricati voli. Premi "Sincronizza Feed" per caricare le offerte.'
-              : 'Nessuna offerta corrisponde ai filtri attivi. Prova ad aumentare il prezzo massimo, a cambiare aeroporto o a mostrare i voli da tutti gli Stati.'}
+              : `Nessuna offerta ${activeTab === 'domestic' ? 'nazionale' : activeTab === 'international' ? 'internazionale' : ''} corrisponde ai filtri attivi. Prova ad aumentare il prezzo massimo o a selezionare un orizzonte temporale più ampio.`}
           </p>
           {flights.length === 0 && (
             <button
@@ -315,4 +388,3 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
     </div>
   );
 }
-

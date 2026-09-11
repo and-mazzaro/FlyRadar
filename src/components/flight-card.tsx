@@ -1,6 +1,6 @@
 import React from 'react';
 import { Plane, Calendar, ExternalLink } from 'lucide-react';
-import { getCityName, getCurrencySymbol } from '@/lib/constants';
+import { getCityName, getCurrencySymbol, isDomesticFlight } from '@/lib/constants';
 
 export interface Flight {
   id: string;
@@ -19,9 +19,12 @@ export interface Flight {
 interface FlightCardProps {
   flight: Flight;
   isPreferred: boolean;
+  userCountry?: string;
 }
 
-export default function FlightCard({ flight, isPreferred }: FlightCardProps) {
+export default function FlightCard({ flight, isPreferred, userCountry = 'Italia' }: FlightCardProps) {
+  const isDomestic = isDomesticFlight(flight.origin, flight.destination, userCountry);
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('it-IT', {
       day: 'numeric',
@@ -71,21 +74,28 @@ export default function FlightCard({ flight, isPreferred }: FlightCardProps) {
           </div>
         </div>
 
-        {/* Badges row — placed here to avoid colliding with destination text */}
-        {(flight.is_last_minute || flight.price < 35) && (
-          <div className="flex gap-1.5 flex-wrap">
-            {flight.is_last_minute && (
-              <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md">
-                Last Minute
-              </span>
-            )}
-            {flight.price < 35 && (
-              <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md">
-                Super Price
-              </span>
-            )}
-          </div>
-        )}
+        {/* Badges row */}
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${
+            isDomestic 
+              ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' 
+              : 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+          }`}>
+            {isDomestic ? 'Nazionale' : 'Internazionale'}
+          </span>
+
+          {flight.is_last_minute && (
+            <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md">
+              Last Minute
+            </span>
+          )}
+
+          {flight.price < 35 && (
+            <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md">
+              Super Price
+            </span>
+          )}
+        </div>
 
         {/* Departure & Return info */}
         <div className="space-y-1.5 text-sm text-slate-300 bg-slate-900/50 p-3 rounded-xl border border-slate-900">
@@ -101,29 +111,30 @@ export default function FlightCard({ flight, isPreferred }: FlightCardProps) {
           )}
         </div>
 
-        {/* Footer info (Airline & Price) */}
-        <div className="flex items-center justify-between border-t border-slate-700/60 pt-3 mt-1">
-          <div className="flex flex-col min-w-0 pr-2 flex-1">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Compagnia</span>
-            <span className="text-slate-300 font-semibold text-xs truncate" title={flight.airline}>
-              {flight.airline}
-            </span>
+        {/* Footer info (Airline & Price) — optimized for mobile */}
+        <div className="border-t border-slate-700/60 pt-3 mt-1 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Compagnia</span>
+              <span className="text-slate-200 font-bold text-xs sm:text-sm leading-tight" title={flight.airline}>
+                {flight.airline}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="text-right">
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Prezzo stimato</span>
-              <span className="text-2xl font-black text-emerald-400 tracking-tight">
+          <div className="flex items-center justify-between gap-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/40">
+            <div className="flex flex-col">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Prezzo stimato</span>
+              <span className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight leading-none">
                 {flight.price.toFixed(2)}{getCurrencySymbol(flight.currency || 'EUR')}
               </span>
-              <span className="text-[9px] text-slate-500 block leading-tight">Verifica al momento della prenotazione</span>
             </div>
 
             <a
               href={`/api/redirect?flight_id=${flight.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="py-2 px-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1"
+              className="py-2 px-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1 shrink-0"
             >
               Prenota
               <ExternalLink className="w-3.5 h-3.5" />

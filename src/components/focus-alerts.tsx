@@ -10,6 +10,7 @@ interface Alert {
   origin: string | null;
   destination: string | null;
   max_price: number | null;
+  target_date?: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -23,6 +24,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [targetDate, setTargetDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -54,7 +56,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
 
   const handleCreateAlert = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!origin && !destination && !maxPrice) {
+    if (!origin && !destination && !maxPrice && !targetDate) {
       setErrorMsg('Inserisci almeno un parametro di ricerca per salvare l\'avviso.');
       return;
     }
@@ -74,6 +76,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
       origin: origin.trim() || null,
       destination: destination.trim() || null,
       max_price: maxPrice ? parseFloat(maxPrice) : null,
+      target_date: targetDate || null,
       is_active: true,
     });
 
@@ -83,6 +86,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
       setOrigin('');
       setDestination('');
       setMaxPrice('');
+      setTargetDate('');
       fetchAlerts();
     }
     setLoading(false);
@@ -110,7 +114,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
       )}
 
       {/* New alert form */}
-      <form onSubmit={handleCreateAlert} className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-900 border border-slate-700/40 p-4 rounded-xl">
+      <form onSubmit={handleCreateAlert} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-900 border border-slate-700/40 p-4 rounded-xl">
         <div>
           <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Partenza</label>
           <input
@@ -126,9 +130,19 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
           <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Arrivo</label>
           <input
             type="text"
-            placeholder="Qualsiasi (es. Londra, BCN)"
+            placeholder="Qualsiasi (es. Londra, JFK)"
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Data Partenza</label>
+          <input
+            type="date"
+            value={targetDate}
+            onChange={(e) => setTargetDate(e.target.value)}
             className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
           />
         </div>
@@ -137,7 +151,7 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
           <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Prezzo Max (€)</label>
           <input
             type="number"
-            placeholder="Sotto i... (es. 40)"
+            placeholder="Sotto i... (es. 150)"
             value={maxPrice}
             onChange={(e) => setMaxPrice(e.target.value)}
             className="w-full px-3 py-2 bg-slate-800 border border-slate-700 text-white rounded-lg placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
@@ -177,8 +191,13 @@ export default function FocusAlertManager({ userId }: FocusAlertManagerProps) {
                     <span className="text-slate-500">→</span>
                     <span>{alert.destination ? `${alert.destination} (${getCityName(alert.destination)})` : 'Qualsiasi'}</span>
                   </div>
-                  <div className="text-xs text-slate-400 font-medium">
-                    {alert.max_price ? `Prezzo max: ${alert.max_price}€` : 'Qualsiasi prezzo'}
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 font-medium">
+                    <span>{alert.max_price ? `Prezzo max: ${alert.max_price}€` : 'Qualsiasi prezzo'}</span>
+                    {alert.target_date && (
+                      <span className="text-indigo-400 font-semibold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                        📅 Partenza: {new Date(alert.target_date).toLocaleDateString('it-IT')}
+                      </span>
+                    )}
                   </div>
                 </div>
 

@@ -41,6 +41,7 @@ create table public.user_alerts (
   user_id uuid references public.profiles(id) on delete cascade not null,
   origin text,
   destination text,
+  target_date text,
   max_price numeric(10, 2),
   is_active boolean default true,
   created_at timestamp with time zone default now()
