@@ -156,13 +156,16 @@ export default function FeedPage() {
         }
       }
 
-      const { data: flightsData, error: flightsError } = await supabase
-        .from('flights')
-        .select('*')
-        .order('found_at', { ascending: false });
-
-      if (flightsData && !flightsError) {
-        setFlights(flightsData);
+      // Load flights via the API route (service role) to bypass any RLS/JWT issues
+      // with the anon client on the initial page load.
+      try {
+        const flightsRes = await fetch('/api/flights-list', { cache: 'no-store' });
+        if (flightsRes.ok) {
+          const flightsData = await flightsRes.json();
+          setFlights(Array.isArray(flightsData) ? flightsData : []);
+        }
+      } catch (e) {
+        console.error('Error loading initial flights:', e);
       }
 
       setLoading(false);
@@ -609,14 +612,15 @@ function LegacyFeedPage() {
         }
       }
 
-      // Load flights
-      const { data: flightsData, error: flightsError } = await supabase
-        .from('flights')
-        .select('*')
-        .order('found_at', { ascending: false });
-
-      if (flightsData && !flightsError) {
-        setFlights(flightsData);
+      // Load flights via the API route (service role) to bypass any RLS/JWT issues
+      try {
+        const flightsRes = await fetch('/api/flights-list', { cache: 'no-store' });
+        if (flightsRes.ok) {
+          const flightsData = await flightsRes.json();
+          setFlights(Array.isArray(flightsData) ? flightsData : []);
+        }
+      } catch (e) {
+        console.error('Error loading initial flights:', e);
       }
 
       setLoading(false);

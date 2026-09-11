@@ -37,8 +37,10 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
         headers: { 'Authorization': 'Bearer local-fetch' }
       });
 
-      if (!syncRes.ok) throw new Error('Sync fallita');
-      const syncData = await syncRes.json();
+      const syncData = await syncRes.json().catch(() => null);
+      if (!syncRes.ok) {
+        throw new Error(syncData?.error || `Sync fallita (${syncRes.status})`);
+      }
 
       const listRes = await fetch('/api/flights-list', { cache: 'no-store' });
       if (listRes.ok) {
@@ -48,7 +50,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
         setSyncMessage(`✓ ${syncData.flightsInserted ?? newFlights.length} offerte aggiornate`);
       }
     } catch (e) {
-      setSyncMessage('Errore durante la sincronizzazione');
+      setSyncMessage(e instanceof Error ? e.message : 'Errore durante la sincronizzazione');
       console.error(e);
     } finally {
       setSyncing(false);

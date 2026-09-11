@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
 
 // Disable mock flight generation fallback to see if Travelpayouts API works
 const ENABLE_MOCK_FALLBACK = false;
+let activeSync: Promise<FlightOffer[]> | null = null;
 
 // Helper to check if a flight's airport matches the user's alert value (code or name)
 export async function GET(request: Request) {
@@ -37,10 +38,20 @@ export async function GET(request: Request) {
     const travelpayoutsToken = process.env.TRAVELPAYOUTS_API_TOKEN;
 
     if (travelpayoutsToken) {
+      if (activeSync) {
+        return NextResponse.json(
+          { success: false, error: 'Sincronizzazione già in corso' },
+          { status: 409 },
+        );
+      }
+
+      activeSync = fetchTravelpayoutsFlightOffers(travelpayoutsToken);
       try {
-        rawOffers = await fetchTravelpayoutsFlightOffers(travelpayoutsToken);
+        rawOffers = await activeSync;
       } catch (err) {
         console.error('Failed to fetch from Travelpayouts API, falling back to mock:', err);
+      } finally {
+        activeSync = null;
       }
     }
 
@@ -52,19 +63,25 @@ export async function GET(request: Request) {
 
     const supabase = createSupabaseAdminClient();
 
-    // 3. Upsert flights into database
-    // Clean old flights to keep db lightweight (optional cleanup phase)
+    // 3. If the API returned nothing, only clean up expired flights and return early.
+    // Do NOT wipe future flights when we have no fresh data to replace them with.
+    if (rawOffers.length === 0) {
+      await supabase
+        .from('flights')
+        .delete()
+        .lt('departure_date', new Date().toISOString());
+      return NextResponse.json({ success: true, message: 'No flight offers fetched from API', flightsInserted: 0 });
+    }
+
+    // Full refresh: delete ALL existing flights first (past + future) then insert
+    // a clean batch. This prevents duplicate accumulation across repeated syncs.
     const { error: cleanupError } = await supabase
       .from('flights')
       .delete()
-      .lt('departure_date', new Date().toISOString());
+      .not('id', 'is', null); // matches every row
 
     if (cleanupError) {
-      throw new Error(`Failed to remove expired flights: ${cleanupError.message}`);
-    }
-
-    if (rawOffers.length === 0) {
-      return NextResponse.json({ success: true, message: 'No flight offers fetched from API', flightsInserted: 0 });
+      throw new Error(`Failed to clear flights table: ${cleanupError.message}`);
     }
 
     const { data: insertedFlights, error: insertError } = await supabase
