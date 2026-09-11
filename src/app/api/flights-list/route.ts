@@ -6,15 +6,6 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const supabase = createSupabaseAdminClient();
-    const { error: cleanupError } = await supabase
-      .from('flights')
-      .delete()
-      .lt('departure_date', new Date().toISOString());
-
-    if (cleanupError) {
-      return NextResponse.json({ error: cleanupError.message }, { status: 500 });
-    }
-
     const { data: flightsData, error } = await supabase
       .from('flights')
       .select('*')

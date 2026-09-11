@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import FlightCard, { Flight } from './flight-card';
 import { Plane, Search, Filter, RotateCw, Globe, Calendar, Compass } from 'lucide-react';
 import { AIRLINES, matchesAirportOrCity, isDomesticFlight } from '@/lib/constants';
@@ -27,6 +27,13 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
   // Auto-refresh states
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const refreshInFlight = useRef(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Sync new flights from the cron sync-flights route
   const handleSync = useCallback(async () => {
@@ -60,6 +67,9 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
 
   // Soft fetch to update list in background without heavy cron processing
   const refreshFlightsList = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+
     try {
       const listRes = await fetch('/api/flights-list', { cache: 'no-store' });
       if (listRes.ok) {
@@ -69,6 +79,8 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
       }
     } catch (e) {
       console.error('Error refreshing flights list:', e);
+    } finally {
+      refreshInFlight.current = false;
     }
   }, []);
 
@@ -125,7 +137,7 @@ export default function FlightFeed({ initialFlights, preferredAirlines, userCoun
 
       // 2. Date horizon filter
       const departure = new Date(f.departure_date);
-      const daysUntil = (departure.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      const daysUntil = (departure.getTime() - currentTime) / (1000 * 60 * 60 * 24);
       if (dateHorizon === '7days' && daysUntil > 7) return false;
       if (dateHorizon === '30days' && daysUntil > 30) return false;
       if (dateHorizon === 'longterm' && daysUntil <= 30) return false;
