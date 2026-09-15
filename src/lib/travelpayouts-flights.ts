@@ -7,6 +7,8 @@ import {
 } from '@/lib/constants';
 const SEARCH_WINDOW_DAYS = 240;
 const ROUTE_RESULT_LIMIT = 500;
+const TARGET_FEED_SIZE = 300;
+const MIN_OUTSIDE_EUROPE_OFFERS = 100;
 const MAX_CONCURRENT_REQUESTS = 1;
 const REQUEST_INTERVAL_MS = 1000;
 
@@ -231,9 +233,9 @@ export async function fetchTravelpayoutsFlightOffers(apiToken: string): Promise<
   europeanOffers.sort((a, b) => a.price - b.price);
   extraEUOffers.sort((a, b) => a.price - b.price);
 
-  // Prioritize international coverage while reserving space for long-haul destinations.
-  const selectedEuropean = europeanOffers.slice(0, 100);
-  const selectedExtraEU = extraEUOffers.slice(0, 150);
+  // Keep a broad feed with a guaranteed minimum of destinations outside Europe.
+  const selectedExtraEU = extraEUOffers.slice(0, MIN_OUTSIDE_EUROPE_OFFERS);
+  const selectedEuropean = europeanOffers.slice(0, TARGET_FEED_SIZE - selectedExtraEU.length);
 
   const combined = [...selectedEuropean, ...selectedExtraEU];
 
